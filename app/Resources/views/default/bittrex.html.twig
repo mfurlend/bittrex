@@ -1,0 +1,697 @@
+{% block head %}
+
+{% endblock %}
+{% block body %}
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"/>
+    <script
+            src="http://code.jquery.com/jquery-3.2.1.min.js"
+            integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+            crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    {% if refresh_unit is not defined %}
+        {% set refresh_unit %}
+            {{ app.request.get('refresh_unit') | default ('minutes') }}
+        {% endset %}
+    {% endif %}
+    {% if net_interval_unit is not defined %}
+        {% set net_interval_unit %}
+            {{ app.request.get('net_interval_unit') | default ('minutes') }}
+        {% endset %}
+    {% endif %}
+    {% if flag_lifetime_unit is not defined %}
+        {% set flag_lifetime_unit %}
+            {{ app.request.get('flag_lifetime_unit') | default ('minutes') }}
+        {% endset %}
+    {% endif %}
+    <script>
+        window.prices = {{ (prices | json_encode | raw) }};
+    </script>
+    <div id="outer-wrapper" style="display:none;">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-xs-12">
+                    <form id="settings-form" class="form-inline" method="post">
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="refresh_interval">Refresh Interval</label>
+                                    <input type="number" class="form-control" id="refresh_interval"
+                                           name="refresh_interval"
+                                           value="{{ app.request.get('refresh_interval') | default(2) }}">
+                                    <select name="refresh_unit" id="refresh_unit" title="time units">
+                                        <option value="minutes"{% if refresh_unit  == 'minutes' %} selected{% endif %}>
+                                            minutes
+                                        </option>
+                                        <option value="seconds"{% if refresh_unit == 'seconds' %} selected{% endif %}>
+                                            seconds
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="net_btc_enabled">Net BTC Enabled</label>
+                                    <input type="checkbox" class="form-control" id="net_btc_enabled"
+                                           name="net_btc_enabled" {% if net_btc_enabled %} checked="checked" {% endif %} />
+                                </div>
+                            </div>
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="percent_threshold">Percent Threshold</label>
+                                    <input type="number" class="form-control" id="percent_threshold"
+                                           name="percent_threshold"
+                                           min="0"
+                                           step="0.1"
+                                           value="{{ app.request.get('percent_threshold') | default(5) }}">
+                                </div>
+                            </div>
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="purchase_size_threshold">Size Threshold</label>
+                                    <input type="number" class="form-control" id="purchase_size_threshold"
+                                           name="purchase_size_threshold"
+                                           min="0"
+                                           step="0.1"
+                                           value="{{ app.request.get('purchase_size_threshold') | default(1) }}">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="min_base_volume">Min Base Vol.</label>
+                                    <input type="number" class="form-control" id="min_base_volume"
+                                           name="min_base_volume"
+                                           value="{{ app.request.get('min_base_volume') | default(30) }}">
+                                </div>
+                            </div>
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="net_interval">Net Interval</label>
+                                    <input type="number" class="form-control" id="net_interval" name="net_interval"
+                                           value="{{ app.request.get('net_interval') | default(2) }}">
+                                    <select name="net_interval_unit" id="net_interval_unit" title="time units">
+                                        <option value="minutes"{% if net_interval_unit  == 'minutes' %} selected{% endif %}>
+                                            minutes
+                                        </option>
+                                        <option value="seconds"{% if net_interval_unit == 'seconds' %} selected{% endif %}>
+                                            seconds
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="flag_lifetime">Flag Lifetime</label>
+                                    <input type="number" class="form-control" id="flag_lifetime" name="flag_lifetime"
+                                           value="{{ app.request.get('flag_lifetime') | default(2) }}">
+                                    <select name="flag_lifetime_unit" id="flag_lifetime_unit" title="time units">
+                                        <option value="minutes"{% if flag_lifetime_unit  == 'minutes' %} selected{% endif %}>
+                                            minutes
+                                        </option>
+                                        <option value="seconds"{% if flag_lifetime_unit == 'seconds' %} selected{% endif %}>
+                                            seconds
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="col-sm-3">
+                                <div class="form-group">
+                                    <label for="restart">Restart</label>
+                                    <input type="checkbox" class="form-control" id="restart" name="restart"/>
+                                    <button type="submit" class="btn btn-default">Submit</button>
+
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group refreshing"><span id='refreshing-in'
+                                                                 class="refreshing-in">Refreshing In: <span
+                                        id="refreshing-seconds">0</span> seconds</span></div>
+                        <input type="hidden" name="prices_seen" value="{{ prices_seen | default(0) }}" />
+                    </form>
+                </div>
+            </div>
+        </div>
+        <br/>
+        <div id="wrapper">
+
+            <div class="container-fluid small">
+                <div class="row">
+                    <div class="col-xs-12">
+                        <span>Prices seen:</span>
+                        <span style="margin-left: 1em; margin-right: 1em;">{{ prices_seen }}</span>
+                        {% if net_btc_enabled is defined and net_btc_enabled and net is defined %}
+                            <span>Total buy BTC:</span>
+                            <span style="margin-left: 1em; margin-right: 1em;">{{ total_buy }}<span
+                                        class="bitcoin-symbol">Ƀ</span></span>
+                            <span>Total sell BTC:</span>
+                            <span style="margin-left: 1em; margin-right: 1em;">{{ total_sell }}<span
+                                        class="bitcoin-symbol">Ƀ</span></span>
+                            <span>Net BTC:</span>
+                            <span style="margin-left: 1em; margin-right: 1em;">{{ net }}<span
+                                        class="bitcoin-symbol">Ƀ</span></span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="container-fluid">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="legend-wrapper">
+                            <a id="show1" href="#show1" class="small footer-toggle-show">Show Legend</a>
+                            <a id="hide1" href="#hide1" class="small footer-toggle-hide">Hide Legend</a>
+                            <div class="footer-details">
+                                <div class="container-fluid">
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <div class="flex-container keys">
+                                                <button class="key coin flag weight-1">flags: < 3 weight: 1</button>
+                                                <button class="key coin flag weight-0-9">flags: < 3 weight: 0.9</button>
+                                                <button class="key coin flag weight-0-8">flags: < 3 weight: 0.8</button>
+                                                <button class="key coin flag weight-0-7">flags: < 3 weight: 0.7</button>
+                                                <button class="key coin flag weight-0-6">flags: < 3 weight: 0.6</button>
+                                                <button class="key coin flag weight-0-5">flags: < 3 weight: 0.5</button>
+                                                <button class="key coin flag weight-0-4">flags: < 3 weight: 0.4</button>
+                                                <button class="key coin flag weight-0-3">flags: < 3 weight: 0.3</button>
+                                                <button class="key coin flag weight-0-2">flags: < 3 weight: 0.2</button>
+                                                <button class="key coin flag weight-0-1">flags: < 3 weight: 0.1</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <div class="flex-container keys">
+                                                <button class="key coin many-flags flag weight-1">flags: >= 3 weight: 1
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-9">flags: >= 3 weight:
+                                                    0.9
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-8">flags: >= 3 weight:
+                                                    0.8
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-7">flags: >= 3 weight:
+                                                    0.7
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-6">flags: >= 3 weight:
+                                                    0.6
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-5">flags: >= 3 weight:
+                                                    0.5
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-4">flags: >= 3 weight:
+                                                    0.4
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-3">flags: >= 3 weight:
+                                                    0.3
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-2">flags: >= 3 weight:
+                                                    0.2
+                                                </button>
+                                                <button class="key coin many-flags flag weight-0-1">flags: >= 3 weight:
+                                                    0.1
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {#<div class="row">
+                                        <div class="col-md-12">
+                                            <div class="flex-container keys">
+                                                <button class="key coin many-flags very-many-flags flag weight-1">flags:
+                                                    >=
+                                                    8 weight: 1
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-9">
+                                                    flags:
+                                                    >= 8 weight: 0.9
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-8">
+                                                    flags:
+                                                    >= 8 weight: 0.8
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-7">
+                                                    flags:
+                                                    >= 8 weight: 0.7
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-6">
+                                                    flags:
+                                                    >= 8 weight: 0.6
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-5">
+                                                    flags:
+                                                    >= 8 weight: 0.5
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-4">
+                                                    flags:
+                                                    >= 8 weight: 0.4
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-3">
+                                                    flags:
+                                                    >= 8 weight: 0.3
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-2">
+                                                    flags:
+                                                    >= 8 weight: 0.2
+                                                </button>
+                                                <button class="key coin many-flags very-many-flags flag weight-0-1">
+                                                    flags:
+                                                    >= 8 weight: 0.1
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>#}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="container" class="flex-container container-fluid">
+                {% for name, item in prices %}
+                    {% if item.base_volume is not defined or item.base_volume > min_base_volume %}
+                        <button title="${{ (item.price * USDBTC) | round(4) }}"
+                                class="coin{% if item.flags is defined %} flags-active-{{ item.flags|length }}{% if item.flags|length >= 3 %} many-flags{% endif %}{% if item.flags|length >= 8 %} very-many-flags{% endif %}{% if item.flag is defined and item.flag %} flag{% if item.flagweight is defined %} weight-{{ item.flagweight }}{% endif %}{% endif %}{% endif %}"
+                                data-toggle="modal"
+                                data-target="#modal"
+                                data-coin="{{ name }}"
+                        >
+                            <span class="coin-name">{{ name }}</span>
+                            {% if item.change is defined %}<span class="coin-change">{{ item.change | round(1) }}
+                                %</span>{% endif %}
+                            <span class="coin-price">{{ item.price }}</span>
+                            {% if net_btc_enabled is defined and net_btc_enabled and net is defined %}
+                                <span class="buy-btc">BUY: {{ item.buy_btc |number_format(2, '.', ',') }}
+                                    <span class="bitcoin-symbol">Ƀ</span>
+                                </span>
+
+                                <span class="sell-btc">SELL: {{ item.sell_btc |number_format(2, '.', ',') }}
+                                    <span class="bitcoin-symbol">Ƀ</span>
+                                </span>
+
+                                <span class="net-btc">NET: {{ item.net_btc |number_format(2, '.', ',') }}
+                                    <span class="bitcoin-symbol">Ƀ</span>
+                                </span>
+                            {% endif %}
+                            <span class="star-rating">
+                                {% for i in 1..10 %}
+                                    <input title="{{ item.flags|length }} flags" type="radio"
+                                           readonly
+                                           name="rating-{{ name }}"
+                                           value="{{ i }}"{% if item.flags|length >= i %} checked="checked"{% endif %}>
+                                    <i></i>
+                                {% endfor %}
+                                </span>
+
+                            {#<span class="coin-price">${{ (item.price * USDBTC) | round(4) }}</span>#}
+                        </button>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="modal" tabindex="-1" role="dialog" aria-labelledby="modalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
+                                aria-hidden="true">&times;</span></button>
+                    <h4 class="modal-title" id="modalLabel"></h4>
+                </div>
+                <div class="modal-body">
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        $(document).ready(function () {
+            $('#outer-wrapper').removeAttr('style');
+            var refresh = parseInt($('#refresh_interval').val()) * 60 * 1000;
+            var refresh_seconds = refresh / 1000;
+            var refresh_unit = $('#refresh_unit').val();
+            if (refresh_unit === 'seconds') {
+                refresh_seconds /= 60;
+            }
+            var $form = $('#settings-form');
+            var $refreshing_in = $('#refreshing-in');
+            var $refreshing_seconds = $refreshing_in.find('#refreshing-seconds');
+            $refreshing_seconds.text(refresh_seconds);
+            console.log('setting timeout for ' + refresh + ' seconds');
+            var interval = setInterval(function () {
+                refresh_seconds--;
+                if (refresh_seconds <= 0) {
+                    $refreshing_in.text('Refreshing....');
+                    $form.submit();
+                    clearInterval(interval);
+                } else {
+                    $refreshing_seconds.text(refresh_seconds);
+                }
+            }, 1000);
+        });
+
+        $('#modal').on('show.bs.modal', function (event) {
+            var button = $(event.relatedTarget);
+            var coin = button.data('coin');
+            // If necessary, you could initiate an AJAX request here (and then do the updating in a callback).
+            // Update the modal's content. We'll use jQuery here, but you could use a data binding library or other methods instead.
+            var $modal = $(this);
+            var flags = window.prices[coin]['flags'];
+            var start = '<dl class="dl-horizontal">', end = '</dl>';
+            var html = start + flags.reverse().map(function (t, i) {
+                var total = 0, change = 0;
+                if (typeof t.total !== 'undefined') {
+                    total = t.total;
+                }
+                if (typeof t.change !== 'undefined') {
+                    change = t.change;
+                }
+                return `<span class="pull-left bold lead flag-index">${i+1}</span><dt>Time: </dt><dd>${t.time}</dd><dt>Change: </dt><dd>${change.toFixed(3)}</dd><dt>Size: </dt><dd>${total.toFixed(3)}</dd><hr/>`;
+            }).join('') + end;
+            $modal.find('.modal-title').text(coin + ' flags');
+            $modal.find('.modal-body').html(html)
+        })
+    </script>
+{% endblock %}
+{% block stylesheets %}
+    <style>
+        .flag-index {
+            position: absolute;
+        }
+
+        label, input, button[type="submit"] {
+            margin: 10px;
+        }
+
+        .form-control label {
+            vertical-align: middle;
+        }
+
+        .flex-container {
+            display: flex;
+            flex-flow: row wrap;
+            font-size: 12px;
+        }
+
+        #container {
+            margin-top: 10px;
+        }
+
+        button.key.coin {
+            flex: 1 0 105px;
+            max-width: 105px;
+            min-width: 105px;
+            display: block;
+            height: auto;
+        }
+
+        button.coin {
+            flex: 1 0 175px;
+            max-width: 175px;
+            min-width: 175px;
+            display: block;
+            height: {% if net_btc_enabled %}auto{% else %}60px{% endif %};
+        }
+
+        .coin-name, .coin-price {
+            float: left;
+            clear: left;
+        }
+
+        .coin-change {
+            float: right;
+        }
+
+        .coin-name {
+            font-weight: bold;
+        }
+
+        input[type="number"] {
+            max-width: 75px !important;
+        }
+
+        .flag.weight-1 {
+            color: green;
+        }
+
+        .flag[class*="weight-0-9"] {
+            color: #e60000;
+        }
+
+        .flag[class*="weight-0-8"] {
+            color: #cc0000;
+        }
+
+        .flag[class*="weight-0-7"] {
+            color: #b30000;
+        }
+
+        .flag[class*="weight-0-6"] {
+            color: #990000;
+        }
+
+        .flag[class*="weight-0-5"] {
+            color: #800000;
+        }
+
+        .flag[class*="weight-0-4"] {
+            color: #660000;
+        }
+
+        .flag[class*="weight-0-3"] {
+            color: #4c0000;
+        }
+
+        .flag[class*="weight-0-2"] {
+            color: #330000;
+        }
+
+        .flag[class*="weight-0-1"] {
+            color: #190000;
+        }
+
+        .many-flags.flag.weight-1 {
+            color: #0000e6;
+            text-shadow: 0 0 2px #ff00f7;
+        }
+
+        .many-flags.flag[class*="weight-0-9"] {
+            color: #0000e6;
+        }
+
+        .many-flags.flag[class*="weight-0-8"] {
+            color: #0000cc;
+        }
+
+        .many-flags.flag[class*="weight-0-7"] {
+            color: #0000b3;
+        }
+
+        .many-flags.flag[class*="weight-0-6"] {
+            color: #000099;
+        }
+
+        .many-flags.flag[class*="weight-0-5"] {
+            color: #000080;
+        }
+
+        .many-flags.flag[class*="weight-0-4"] {
+            color: #000066;
+        }
+
+        .many-flags.flag[class*="weight-0-3"] {
+            color: #000000;
+        }
+
+        .many-flags.flag[class*="weight-0-2"] {
+            color: #000033;
+        }
+
+        .many-flags.flag[class*="weight-0-1"] {
+            color: #000019;
+        }
+
+        /*
+        .very-many-flags.many-flags.flag .weight-1
+        {
+            color: #ffd500;
+            text-shadow: 0 0 3px black;
+        }
+
+
+        .very-many-flags.many-flags.flag[class*="weight-0-9"] {
+            color: #ffd500;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-8"] {
+            color: #e6bf00;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-7"] {
+            color: #ccaa00;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-6"] {
+            color: #b39500;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-5"] {
+            color: #b09300;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-4"] {
+            color: #806a00;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-3"] {
+            color: #665500;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-2"] {
+            color: #4d4000;
+        }
+
+        .very-many-flags.many-flags.flag[class*="weight-0-1"] {
+            color: #332b00;
+        }*/
+
+        .refreshing {
+            float: right;
+        }
+
+        #restart {
+            padding: 0;
+            height: initial;
+        }
+
+        .bitcoin-symbol {
+            font-weight: bold;
+            color: #565656;
+        }
+
+        .footer-toggle-show,
+        .footer-toggle-hide {
+            border-bottom: 1px solid;
+            display: block;
+            margin-bottom: 1em;
+        }
+
+        .footer-details,
+        .footer-toggle-hide,
+        .footer-toggle-show:target {
+            display: none;
+        }
+
+        .footer-toggle-show:target + .footer-toggle-hide,
+        .footer-toggle-show:target ~ .footer-details {
+            display: block;
+        }
+
+        .footer-toggle-show:after,
+        .footer-toggle-hide:after {
+            float: right;
+            content: "+";
+        }
+
+        .footer-toggle-hide:after {
+            transform: rotate(45deg) scale(1.09);
+        }
+
+        .legend-wrapper {
+            margin-top: 1em;
+            margin-bottom: 1em;
+        }
+
+        .buy-btc, .sell-btc, .net-btc {
+            float: left;
+            width: 100%;
+            text-align: right;
+            font-size: 0.95em;
+        }
+
+        .star-rating {
+            pointer-events: none;
+            float: left;
+            clear: left;
+            font-size: 0;
+            white-space: nowrap;
+            display: inline-block;
+            width: 100px;
+            height: 10px;
+            overflow: hidden;
+            position: relative;
+            background: url('data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IiB3aWR0aD0iMjBweCIgaGVpZ2h0PSIyMHB4IiB2aWV3Qm94PSIwIDAgMjAgMjAiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDIwIDIwIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cG9seWdvbiBmaWxsPSIjREREREREIiBwb2ludHM9IjEwLDAgMTMuMDksNi41ODMgMjAsNy42MzkgMTUsMTIuNzY0IDE2LjE4LDIwIDEwLDE2LjU4MyAzLjgyLDIwIDUsMTIuNzY0IDAsNy42MzkgNi45MSw2LjU4MyAiLz48L3N2Zz4=');
+            background-size: contain;
+        }
+
+        .star-rating i {
+            opacity: 0;
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 10%;
+            z-index: 1;
+            background: url('data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IiB3aWR0aD0iMjBweCIgaGVpZ2h0PSIyMHB4IiB2aWV3Qm94PSIwIDAgMjAgMjAiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDIwIDIwIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cG9seWdvbiBmaWxsPSIjRkZERjg4IiBwb2ludHM9IjEwLDAgMTMuMDksNi41ODMgMjAsNy42MzkgMTUsMTIuNzY0IDE2LjE4LDIwIDEwLDE2LjU4MyAzLjgyLDIwIDUsMTIuNzY0IDAsNy42MzkgNi45MSw2LjU4MyAiLz48L3N2Zz4=');
+            background-size: contain;
+
+        }
+
+        .star-rating input {
+            -moz-appearance: none;
+            -webkit-appearance: none;
+            opacity: 0;
+            display: inline-block;
+            width: 10%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            z-index: 2;
+            position: relative;
+        }
+
+        .star-rating input:checked + i {
+            opacity: 1;
+        }
+
+        .star-rating i ~ i {
+            width: 20%;
+        }
+
+        .star-rating i ~ i ~ i {
+            width: 30%;
+        }
+
+        .star-rating i ~ i ~ i ~ i {
+            width: 40%;
+        }
+
+        .star-rating i ~ i ~ i ~ i ~ i {
+            width: 50%;
+        }
+
+        .star-rating i ~ i ~ i ~ i ~ i ~ i {
+            width: 60%;
+        }
+
+        .star-rating i ~ i ~ i ~ i ~ i ~ i ~ i {
+            width: 70%;
+        }
+
+        .star-rating i ~ i ~ i ~ i ~ i ~ i ~ i ~ i {
+            width: 80%;
+        }
+
+        .star-rating i ~ i ~ i ~ i ~ i ~ i ~ i ~ i ~ i {
+            width: 90%;
+        }
+
+        .star-rating i ~ i ~ i ~ i ~ i ~ i ~ i ~ i ~ i ~ i {
+            width: 100%;
+        }
+    </style>
+{% endblock %}
+
